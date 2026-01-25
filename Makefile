@@ -13,7 +13,7 @@ clean:
 	rm -rf $(BUILD_DIR)
 
 flash:
-	@-pyocd flash -t $(TARGET)  --connect under-reset --frequency 500000 $(BUILD_DIR)/data-logger.elf
+	@-pyocd flash -t $(TARGET) $(BUILD_DIR)/data-logger.elf
 
 monitor:
 	@-pyocd rtt -t $(TARGET) -a $(RTT_ADDR)

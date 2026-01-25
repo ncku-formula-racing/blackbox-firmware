@@ -67,6 +67,9 @@ void Error_Handler(void);
 #define LED_Fault2_Pin GPIO_PIN_9
 #define LED_Fault2_Port GPIOA
 
+#define Ext_Shutdown_Pin GPIO_PIN_3
+#define Ext_Shutdown_Port GPIOA
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

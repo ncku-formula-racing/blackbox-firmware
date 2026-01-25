@@ -2,17 +2,7 @@
 /**
   ******************************************************************************
   * @file           : main.c
-  * @brief          : Main program body
-  ******************************************************************************
-  * @attention
-  *
-  * Copyright (c) 2026 STMicroelectronics.
-  * All rights reserved.
-  *
-  * This software is licensed under terms that can be found in the LICENSE file
-  * in the root directory of this software component.
-  * If no LICENSE file comes with this software, it is provided AS-IS.
-  *
+  * @brief          : BlackBox Main Program
   ******************************************************************************
   */
 /* USER CODE END Header */
@@ -23,6 +13,7 @@
 /* USER CODE BEGIN Includes */
 
 #include "SEGGER_RTT.h"
+#include "can_addr_def.h"
 
 /* USER CODE END Includes */
 
@@ -33,7 +24,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define LEDs 8
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -44,29 +35,91 @@
 /* Private variables ---------------------------------------------------------*/
 CAN_HandleTypeDef hcan;
 
-RTC_HandleTypeDef hrtc;
-
 SPI_HandleTypeDef hspi1;
+SPI_HandleTypeDef hspi2;
+DMA_HandleTypeDef hdma_spi2_tx;
 
 PCD_HandleTypeDef hpcd_USB_FS;
 
 /* USER CODE BEGIN PV */
+
+// WS2812 SPI Signal Simulation
+static const uint16_t WS2812_0 = 0xF800; 
+static const uint16_t WS2812_1 = 0xFC00;
+
+
+static CAN_FilterTypeDef filterConfig = {
+    .FilterActivation = ENABLE,
+    .FilterBank = 0,
+    .FilterFIFOAssignment = CAN_RX_FIFO0,
+    .FilterIdHigh = CA_FAULT_SIGNAL << 5, 
+    .FilterIdLow = 0,
+    .FilterMaskIdHigh = CA_DAQ_DATA << 5,
+    .FilterMaskIdLow = 0,
+    .FilterMode = CAN_FILTERMODE_IDLIST,   
+    .FilterScale = CAN_FILTERSCALE_16BIT,  
+};
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_CAN_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_USB_PCD_Init(void);
-static void MX_RTC_Init(void);
+static void MX_SPI2_Init(void);
 /* USER CODE BEGIN PFP */
+
+void Update_WS2812_Effect(uint8_t mode);
+uint32_t color[8] = {0x000000};
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+void Update_WS2812_Effect(uint8_t mode){
+  static uint16_t ws_buf[24 * LEDs];
+
+  switch (mode)
+  {
+  case 1:
+    color[0] = 0x1F0000; // red
+    color[1] = 0x001F00; // green
+    color[2] = 0x00001F; // blue
+    color[3] = 0x1F1F00; // r+g = yellow
+    color[4] = 0x001F1F;
+    color[5] = 0x1F001F;
+    color[6] = 0x1F1F1F;
+    color[7] = 0x000000;
+    break;
+  case 2:
+    {
+    uint32_t temp = color[0];
+    for(int i = 0; i<7; i++){ color [i] = color[i+1];}
+    color[7] = temp;
+    }
+    break;
+  
+  default:
+    for(int i = 0; i<8; i++){
+      color[i] = 0x0;
+    }
+    break;
+  }
+
+  for (int i = 0; i < LEDs; i++){
+    uint32_t sent_color = color[i]; // sent different color
+    for (int j = 0; j < 24; j++){
+      ws_buf[i * 24 + j] = ((sent_color >> (23 - j)) & 0x01) ? WS2812_1 : WS2812_0;
+    }
+  }
+  HAL_SPI_Transmit_DMA(&hspi2, (uint8_t*)ws_buf, 24*LEDs);
+
+}
+
 
 /* USER CODE END 0 */
 
@@ -103,10 +156,11 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_CAN_Init();
   MX_SPI1_Init();
   MX_USB_PCD_Init();
-  MX_RTC_Init();
+  MX_SPI2_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_GPIO_WritePin(LED_Fault2_Port, LED_Fault2_Pin, GPIO_PIN_SET);
@@ -118,13 +172,29 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   
   SEGGER_RTT_printf(0, "Counting...\n");
-  uint32_t a = 0;
+  // uint32_t a = 0;
+  Update_WS2812_Effect(0);
+  Update_WS2812_Effect(1);
   while (1)
   {
 
     HAL_GPIO_TogglePin(LED_Fault1_Port, LED_Fault1_Pin);
-    HAL_Delay(500);
-    SEGGER_RTT_printf(0, "count %d\n", a++);
+    
+    if (HAL_GPIO_ReadPin(Ext_Shutdown_Port, Ext_Shutdown_Pin)){
+      Update_WS2812_Effect(2);
+    }
+    else  {Update_WS2812_Effect(0);}
+    HAL_Delay(1000);
+    // SEGGER_RTT_printf(0, "count %d\n", a++);
+    SEGGER_RTT_printf(0, "RGB: ");
+    for(int i = 0; i < 4; i++){
+        uint8_t r = (color[i] >> 16) & 0xFF;
+        uint8_t g = (color[i] >> 8) & 0xFF;
+        uint8_t b = color[i] & 0xFF;
+
+        SEGGER_RTT_printf(0, " [%02X,%02X,%02X]", r, g, b);
+    }
+    SEGGER_RTT_printf(0, " \n");
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -145,13 +215,13 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
+  RCC_OscInitStruct.HSEState = RCC_HSE_ON;
+  RCC_OscInitStruct.HSEPredivValue = RCC_HSE_PREDIV_DIV1;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
-  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI_DIV2;
-  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL12;
+  RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSE;
+  RCC_OscInitStruct.PLL.PLLMUL = RCC_PLL_MUL6;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
     Error_Handler();
@@ -162,16 +232,15 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
                               |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV4;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_1) != HAL_OK)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_RTC|RCC_PERIPHCLK_USB;
-  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB;
   PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_PLL;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
@@ -217,37 +286,6 @@ static void MX_CAN_Init(void)
 }
 
 /**
-  * @brief RTC Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_RTC_Init(void)
-{
-
-  /* USER CODE BEGIN RTC_Init 0 */
-
-  /* USER CODE END RTC_Init 0 */
-
-  /* USER CODE BEGIN RTC_Init 1 */
-
-  /* USER CODE END RTC_Init 1 */
-
-  /** Initialize RTC Only
-  */
-  hrtc.Instance = RTC;
-  hrtc.Init.AsynchPrediv = RTC_AUTO_1_SECOND;
-  hrtc.Init.OutPut = RTC_OUTPUTSOURCE_ALARM;
-  if (HAL_RTC_Init(&hrtc) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN RTC_Init 2 */
-
-  /* USER CODE END RTC_Init 2 */
-
-}
-
-/**
   * @brief SPI1 Initialization Function
   * @param None
   * @retval None
@@ -286,6 +324,44 @@ static void MX_SPI1_Init(void)
 }
 
 /**
+  * @brief SPI2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_SPI2_Init(void)
+{
+
+  /* USER CODE BEGIN SPI2_Init 0 */
+
+  /* USER CODE END SPI2_Init 0 */
+
+  /* USER CODE BEGIN SPI2_Init 1 */
+
+  /* USER CODE END SPI2_Init 1 */
+  /* SPI2 parameter configuration*/
+  hspi2.Instance = SPI2;
+  hspi2.Init.Mode = SPI_MODE_MASTER;
+  hspi2.Init.Direction = SPI_DIRECTION_2LINES;
+  hspi2.Init.DataSize = SPI_DATASIZE_16BIT;
+  hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
+  hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
+  hspi2.Init.NSS = SPI_NSS_SOFT;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_2;
+  hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
+  hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
+  hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
+  hspi2.Init.CRCPolynomial = 10;
+  if (HAL_SPI_Init(&hspi2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN SPI2_Init 2 */
+
+  /* USER CODE END SPI2_Init 2 */
+
+}
+
+/**
   * @brief USB Initialization Function
   * @param None
   * @retval None
@@ -313,6 +389,22 @@ static void MX_USB_PCD_Init(void)
   /* USER CODE BEGIN USB_Init 2 */
 
   /* USER CODE END USB_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel5_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel5_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel5_IRQn);
 
 }
 
@@ -350,12 +442,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PB15 */
-  GPIO_InitStruct.Pin = GPIO_PIN_15;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PA8 PA9 */
