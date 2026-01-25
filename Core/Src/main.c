@@ -8,6 +8,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "fatfs.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -24,7 +25,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define LEDs 8
+#define LEDs 4
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -161,10 +162,17 @@ int main(void)
   MX_SPI1_Init();
   MX_USB_PCD_Init();
   MX_SPI2_Init();
+  MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_GPIO_WritePin(LED_Fault2_Port, LED_Fault2_Pin, GPIO_PIN_SET);
+  HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
   SEGGER_RTT_printf(0, "LED2 ON\n");
+
+  for(int i = 0; i < 8; i++) color[i] = 0;
+
+  // 強制跑一次 mode 0 (把 ws_buf 填滿 WS2812_0 並發送)
+  Update_WS2812_Effect(0); 
+  HAL_Delay(500); // 確保 DMA 傳完
 
   /* USER CODE END 2 */
 
@@ -173,28 +181,34 @@ int main(void)
   
   SEGGER_RTT_printf(0, "Counting...\n");
   // uint32_t a = 0;
-  Update_WS2812_Effect(0);
-  Update_WS2812_Effect(1);
+  // Update_WS2812_Effect(1);
   while (1)
   {
 
-    HAL_GPIO_TogglePin(LED_Fault1_Port, LED_Fault1_Pin);
+    HAL_GPIO_TogglePin(LED1_GPIO_Port, LED1_Pin);
     
-    if (HAL_GPIO_ReadPin(Ext_Shutdown_Port, Ext_Shutdown_Pin)){
-      Update_WS2812_Effect(2);
-    }
-    else  {Update_WS2812_Effect(0);}
-    HAL_Delay(1000);
-    // SEGGER_RTT_printf(0, "count %d\n", a++);
-    SEGGER_RTT_printf(0, "RGB: ");
-    for(int i = 0; i < 4; i++){
-        uint8_t r = (color[i] >> 16) & 0xFF;
-        uint8_t g = (color[i] >> 8) & 0xFF;
-        uint8_t b = color[i] & 0xFF;
 
-        SEGGER_RTT_printf(0, " [%02X,%02X,%02X]", r, g, b);
-    }
-    SEGGER_RTT_printf(0, " \n");
+    // ----------------- WS2812 Begin -----------------
+    // You could just ignore it, some issues not solved
+
+    // if (HAL_GPIO_ReadPin(Ext_Shotdown_GPIO_Port, Ext_Shotdown_Pin)){
+    //   // Update_WS2812_Effect(2);
+    // }
+    // else  {Update_WS2812_Effect(0);}
+    // HAL_Delay(1000);
+    // // SEGGER_RTT_printf(0, "count %d\n", a++);
+    // SEGGER_RTT_printf(0, "RGB: ");
+    // for(int i = 0; i < 4; i++){
+    //     uint8_t r = (color[i] >> 16) & 0xFF;
+    //     uint8_t g = (color[i] >> 8) & 0xFF;
+    //     uint8_t b = color[i] & 0xFF;
+
+    //     SEGGER_RTT_printf(0, " [%02X,%02X,%02X]", r, g, b);
+    // }
+    // SEGGER_RTT_printf(0, " \n");
+
+    // ----------------- WS2812 Finish -----------------
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -308,7 +322,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_4;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_128;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -426,26 +440,26 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_10, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(SPI_CS_GPIO_Port, SPI_CS_Pin, GPIO_PIN_SET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_8|GPIO_PIN_9, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, LED1_Pin|LED2_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : PA3 */
-  GPIO_InitStruct.Pin = GPIO_PIN_3;
+  /*Configure GPIO pin : Ext_Shotdown_Pin */
+  GPIO_InitStruct.Pin = Ext_Shotdown_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
+  HAL_GPIO_Init(Ext_Shotdown_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pin : PB10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_10;
+  /*Configure GPIO pin : SPI_CS_Pin */
+  GPIO_InitStruct.Pin = SPI_CS_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+  HAL_GPIO_Init(SPI_CS_GPIO_Port, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PA8 PA9 */
-  GPIO_InitStruct.Pin = GPIO_PIN_8|GPIO_PIN_9;
+  /*Configure GPIO pins : LED1_Pin LED2_Pin */
+  GPIO_InitStruct.Pin = LED1_Pin|LED2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;

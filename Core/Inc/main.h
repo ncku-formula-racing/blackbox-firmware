@@ -57,18 +57,18 @@ void Error_Handler(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/
+#define Ext_Shotdown_Pin GPIO_PIN_3
+#define Ext_Shotdown_GPIO_Port GPIOA
+#define SPI_CS_Pin GPIO_PIN_10
+#define SPI_CS_GPIO_Port GPIOB
+#define LED1_Pin GPIO_PIN_8
+#define LED1_GPIO_Port GPIOA
+#define LED2_Pin GPIO_PIN_9
+#define LED2_GPIO_Port GPIOA
 
 /* USER CODE BEGIN Private defines */
 
-
-#define LED_Fault1_Pin GPIO_PIN_8
-#define LED_Fault1_Port GPIOA
-
-#define LED_Fault2_Pin GPIO_PIN_9
-#define LED_Fault2_Port GPIOA
-
-#define Ext_Shutdown_Pin GPIO_PIN_3
-#define Ext_Shutdown_Port GPIOA
+#define SD_SPI_HANDLE hspi1
 
 /* USER CODE END Private defines */
 
