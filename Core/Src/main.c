@@ -15,6 +15,7 @@
 
 #include "SEGGER_RTT.h"
 #include "can_addr_def.h"
+#include "can_log.h"
 
 /* USER CODE END Includes */
 
@@ -122,6 +123,16 @@ void Update_WS2812_Effect(uint8_t mode){
 }
 
 
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
+  CAN_RxHeaderTypeDef rx_header;
+  uint8_t rx_data[8];
+
+  if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &rx_header, rx_data) ==
+      HAL_OK) {
+    CAN_Log_Update(rx_header.StdId, rx_data);
+  }
+}
+
 /* USER CODE END 0 */
 
 /**
@@ -164,6 +175,10 @@ int main(void)
   MX_SPI2_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
+
+  HAL_CAN_ConfigFilter(&hcan, &filterConfig);
+  HAL_CAN_Start(&hcan);
+  HAL_CAN_ActivateNotification(&hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
 
   HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
   SEGGER_RTT_printf(0, "LED2 ON\n");
@@ -208,6 +223,9 @@ int main(void)
     // SEGGER_RTT_printf(0, " \n");
 
     // ----------------- WS2812 Finish -----------------
+
+    CAN_Log_PrintAll();
+    HAL_Delay(1000);
 
     /* USER CODE END WHILE */
 
